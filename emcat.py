@@ -431,7 +431,7 @@ class KK(object):
 
         cl.enqueue_copy(queue, log_bern2, bern_g)
         
-        embed()
+        # embed()
 
         y = log_bern2.sum(axis = 2)
         x = diff(self.spikes_in_cluster_offset)
@@ -470,12 +470,30 @@ class KK(object):
 
         prelogresponsibility =  compute_subresponsibility(self, weights,  log_bern, num_clusters) 
             #unbern[cluster,:,:]=bern[cluster,:,:]*len(self.get_spikes_in_cluster(cluster))
+        
 
-        if prelogresponsibility.shape[0] >= 1:
-            
+        nclus_g = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=int32(prelogresponsibility2.shape[0]))
+        lpb_g  = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=float32(self.log_p_best))
+        lpsb_g = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=float32(self.log_p_second_best))
+        clus_g = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=int32(self.clusters))
+        sclus_g= cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=int32(self.clusters_second_best))
+        ooec_g = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=int32(only_evaluate_current_clusters))
 
-        embed()
-        time.sleep(5)
+
+        t_log_p_best = zeros(self.log_p_best.shape, dtype = float32)
+        t_log_p_second_best = zeros(self.log_p_second_best.shape, dtype = float32)
+        t_clusters = zeros(self.clusters.shape, dtype = int32)
+        t_clusters_second_best = zeros(self.clusters_second_best.shape, dtype = int32)
+        
+        prg.assign(queue, self.clusters.shape, None, nspikes_g, prelog_g, lpb_g, lpsb_g, clus_g, sclus_g, nclus_g,ooec_g, debug1)
+
+        cl.enqueue_copy(queue, debug, debug1)
+        cl.enqueue_copy(queue, t_log_p_best, lpb_g)
+        cl.enqueue_copy(queue, t_log_p_second_best, lpsb_g)
+        cl.enqueue_copy(queue, t_clusters, clus_g)
+        cl.enqueue_copy(queue, t_clusters_second_best, sclus_g)
+
+        
 
 
         if self.embed:    
@@ -498,6 +516,15 @@ class KK(object):
         # we've reassigned clusters so we need to recompute the partitions, but we don't want to
         # reindex yet because we may reassign points to different clusters and we need the original
         # cluster numbers for that
+
+        a =t_log_p_best-self.log_p_best
+        b =t_log_p_second_best - self.log_p_second_best
+        c = t_clusters-self.clusters
+        d = t_clusters_second_best - self.clusters_second_best
+        embed()
+        
+
+
         self.partition_clusters()
 
     @add_slots

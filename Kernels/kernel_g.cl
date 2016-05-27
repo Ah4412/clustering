@@ -59,7 +59,75 @@ __kernel void prelog(__global const int *KKruns, __global const int *maxDK,__glo
 }
 
 
-__kernel void assign(__global const int *KKruns, __global const int *maxDK,__global const int *n_spikes, __global const int *sparseKKs, __global const int *sparseLCs, __global const int *start, __global const int *end, __global const float *bern, __global float *prelog, __global const float *filler, __global float *debug1)
+__kernel void assign(__global const int *n_spikes, __global const float *prelog, __global float *log_p_best,__global float *log_p_second_best, __global int *clusters, __global int *clusters_second_best, __global const int *ng_clust, __global const int *ooec, __global float *debug1)
 {
+	int s = get_global_id(0);
+	int sortbest;
+	int secondsortbest;
+	float best;
+	float secondbest;
+	float temp;
+	int ns = *n_spikes;
 
+	if(*ng_clust<=1){ 
+        sortbest = 0;
+    }else{    
+        sortbest = 0;
+        secondsortbest = 1;
+        best = prelog[s];
+        secondbest = prelog[ns+s];
+        if(secondbest > best){
+        	sortbest = 1;
+        	secondsortbest = 0;
+        	temp = best;
+        	best = secondbest;
+        	secondbest = temp;
+        }
+        for(int i = 2; i<*ng_clust; i++){
+        	temp = prelog[i*ns + s];
+            if(temp>secondbest){
+                if(temp>best){
+                    secondsortbest = sortbest;  
+                    sortbest = i;
+                    secondbest = best;
+                    best = temp;
+                }else{
+                    secondsortbest = i;
+                    secondbest = temp;
+                }
+            }
+        }
+    }
+    debug1[s] = best;
+    debug1[ns + s] = secondbest;
+    debug1[2*ns + s] = sortbest;
+    debug1[3*ns + s] = secondsortbest;
+
+
+    float cur_log_p_best = log_p_best[s];
+    if(ooec){
+        float cur_log_p_second_best = log_p_second_best[s];
+
+        if(cur_log_p_best > best){
+            if(cur_log_p_second_best > best){
+                log_p_second_best[s] = cur_log_p_second_best;
+            }else{    
+                log_p_second_best[s] = best;
+            }  
+        }else{    
+            log_p_best[s] = best;
+  
+            if((*ng_clust>1) & (isfinite(secondbest))){
+                log_p_second_best[s] = secondbest;
+            }else{ 
+                log_p_second_best[s] = best;
+            }
+            clusters[s] = sortbest;
+            if(*ng_clust>1){
+                clusters_second_best[s] = secondsortbest;
+	        }
+        }
+    }else{
+        log_p_best[s] = best;
+    }
 }
